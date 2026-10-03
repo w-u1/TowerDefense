@@ -1,7 +1,8 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using TowerDefense.Core;
+using TowerDefense.Systems;
 
 namespace TowerDefense.UI
 {
@@ -100,7 +101,7 @@ namespace TowerDefense.UI
                 _titleText.color = new Color(0.3f, 1f, 0.4f);
                 _messageText.text = "恭喜你成功抵御了所有敌人的进攻！";
                 // 最后一关不显示下一关
-                _nextLevelButton.gameObject.SetActive(GameBootstrapper.CurrentLevel < 3);
+                _nextLevelButton.gameObject.SetActive(GameBootstrapper.CurrentLevel < 5);
             }
             else
             {
@@ -155,3 +156,5 @@ namespace TowerDefense.UI
         }
     }
 }
+
+

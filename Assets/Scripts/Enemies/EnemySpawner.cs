@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using TowerDefense.Core;
 using TowerDefense.Systems;
@@ -117,7 +117,7 @@ namespace TowerDefense.Enemies
         {
             var go = new GameObject($"Enemy_{data.Type}");
             var spriteRenderer = go.AddComponent<SpriteRenderer>();
-            spriteRenderer.sprite = GenerateEnemySprite(data);
+            spriteRenderer.sprite = GetEnemySprite(data);
             spriteRenderer.sortingOrder = 5;
 
             var enemy = go.AddComponent<Enemy>();
@@ -140,6 +140,36 @@ namespace TowerDefense.Enemies
             return enemy;
         }
 
+        /// <summary>
+        /// 从素材管理器获取敌人精灵，没有素材则用程序化生成。
+        /// </summary>
+        private Sprite GetEnemySprite(EnemyData data)
+        {
+            var sm = SpriteManager.Instance;
+            if (sm == null)
+                return GenerateEnemySprite(data);
+
+            // 飞行敌人用飞机精灵
+            if (data.IsFlying)
+            {
+                return data.Type == EnemyType.Fast ? sm.EnemyPlaneGreen : sm.EnemyPlaneGray;
+            }
+
+            // 地面敌人按类型选虫子
+            switch (data.Type)
+            {
+                case EnemyType.Fast:
+                    return sm.EnemyFast;
+                case EnemyType.Normal:
+                    return sm.EnemyNormal;
+                case EnemyType.Tank:
+                    return sm.EnemyTank;
+                case EnemyType.Boss:
+                    return sm.EnemyTank; // Boss用大虫子
+                default:
+                    return sm.EnemyNormal;
+            }
+        }
         /// <summary>
         /// 程序化生成敌人Sprite（不同类型不同形状）。
         /// </summary>
@@ -256,3 +286,5 @@ namespace TowerDefense.Enemies
         }
     }
 }
+
+

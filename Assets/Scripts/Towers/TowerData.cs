@@ -14,7 +14,11 @@ namespace TowerDefense.Towers
         /// <summary>冰塔：减速敌人，伤害低</summary>
         Frost,
         /// <summary>激光塔：持续伤害，高DPS</summary>
-        Laser
+        Laser,
+        /// <summary>毒塔：持续DoT伤害</summary>
+        Poison,
+        /// <summary>辅助塔：提升周围塔的攻速和伤害</summary>
+        Support
     }
 
     /// <summary>
@@ -44,6 +48,9 @@ namespace TowerDefense.Towers
 
         [Tooltip("显示名称")]
         public string DisplayName = "箭塔";
+
+        [Tooltip("塔描述（商店里显示）")]
+        [TextArea] public string Description = "";
 
         [Tooltip("建造花费")]
         [Min(0)] public int BuildCost = 50;
@@ -85,6 +92,24 @@ namespace TowerDefense.Towers
 
         [Tooltip("是否持续伤害（激光）")]
         public bool IsContinuousDamage = false;
+
+        [Tooltip("是否施加中毒DoT")]
+        public bool HasPoisonEffect = false;
+
+        [Tooltip("中毒每秒伤害")]
+        public float PoisonDps = 5f;
+
+        [Tooltip("中毒持续时间（秒）")]
+        public float PoisonDuration = 3f;
+
+        [Tooltip("是否是辅助塔（增益周围塔）")]
+        public bool IsSupportTower = false;
+
+        [Tooltip("攻速加成（对周围塔）")]
+        [Range(0f, 0.5f)] public float SupportAttackSpeedBonus = 0.2f;
+
+        [Tooltip("伤害加成（对周围塔）")]
+        [Range(0f, 1f)] public float SupportDamageBonus = 0.2f;
 
         [Header("视觉配置")]
         [Tooltip("塔主体颜色")]

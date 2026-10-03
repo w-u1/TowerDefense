@@ -1,7 +1,8 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TowerDefense.Core;
+using TowerDefense.Systems;
 using TowerDefense.Towers;
 
 namespace TowerDefense.UI
@@ -17,16 +18,17 @@ namespace TowerDefense.UI
         private RectTransform _panelRect;
         private TowerData _selectedTower;
         private GameObject _selectedHighlight;
+        private Text _descText;
 
         public void Initialize()
         {
             _panelRect = GetComponent<RectTransform>();
-            // 底部横条
-            _panelRect.anchorMin = new Vector2(0.5f, 0);
-            _panelRect.anchorMax = new Vector2(0.5f, 0);
-            _panelRect.pivot = new Vector2(0.5f, 0);
-            _panelRect.sizeDelta = new Vector2(880, 160);
-            _panelRect.anchoredPosition = new Vector2(0, 10);
+            // 右侧竖条
+            _panelRect.anchorMin = new Vector2(1f, 0.5f);
+            _panelRect.anchorMax = new Vector2(1f, 0.5f);
+            _panelRect.pivot = new Vector2(1f, 0.5f);
+            _panelRect.sizeDelta = new Vector2(175, 780);
+            _panelRect.anchoredPosition = new Vector2(-10, 0);
 
             // 面板背景（圆角感的深色条）
             var bg = UIManager.CreatePanel(transform, "Background", new Color(0.08f, 0.06f, 0.04f, 0.92f),
@@ -37,6 +39,11 @@ namespace TowerDefense.UI
             UIManager.CreatePanel(transform, "TopHighlight", new Color(0.6f, 0.45f, 0.25f, 0.6f),
                 new Vector2(0, 3), new Vector2(0, 0),
                 anchorMin: new Vector2(0, 1), anchorMax: new Vector2(1, 1));
+
+            // 塔描述（商店上方悬浮显示）
+            _descText = UIManager.CreateText(transform.parent, "TowerDesc", "", 22,
+                TextAnchor.UpperCenter, new Vector2(600, 80), new Vector2(0, -180),
+                new Color(1f, 0.95f, 0.8f));
 
             // 按钮容器
             var containerGo = new GameObject("ButtonContainer", typeof(RectTransform));
@@ -69,25 +76,25 @@ namespace TowerDefense.UI
             }
             _towerButtons.Clear();
 
-            float buttonSize = 120f;
-            float spacing = 30f;
-            float totalWidth = _availableTowers.Count * buttonSize + (_availableTowers.Count - 1) * spacing;
-            float startX = -totalWidth / 2f + buttonSize / 2f;
+            float buttonSize = 125f;
+            float spacing = 22f;
+            float totalHeight = _availableTowers.Count * buttonSize + (_availableTowers.Count - 1) * spacing;
+            float startY = totalHeight / 2f - buttonSize / 2f;
 
             for (int i = 0; i < _availableTowers.Count; i++)
             {
                 var towerData = _availableTowers[i];
-                float xPos = startX + i * (buttonSize + spacing);
+                float yPos = startY - i * (buttonSize + spacing);
 
-                var button = CreateTowerButton(towerData, xPos, buttonSize);
+                var button = CreateTowerButton(towerData, yPos, buttonSize);
                 _towerButtons.Add(button);
             }
-        }
 
+        }
         /// <summary>
         /// 创建单个圆形塔按钮。
         /// </summary>
-        private GameObject CreateTowerButton(TowerData data, float xPos, float size)
+        private GameObject CreateTowerButton(TowerData data, float yPos, float size)
         {
             var go = new GameObject($"TowerButton_{data.Type}", typeof(RectTransform));
             go.transform.SetParent(_buttonContainer, false);
@@ -96,8 +103,8 @@ namespace TowerDefense.UI
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = new Vector2(size, size + 30); // 圆形+花费文字
-            rect.anchoredPosition = new Vector2(xPos, 5);
+            rect.sizeDelta = new Vector2(size, size + 70); // 圆形+名称+花费
+            rect.anchoredPosition = new Vector2(0, yPos);
 
             // 选中高亮环（默认隐藏）
             var highlightGo = new GameObject("Highlight", typeof(RectTransform));
@@ -110,7 +117,7 @@ namespace TowerDefense.UI
             highlightRect.anchorMax = new Vector2(0.5f, 0.5f);
             highlightRect.pivot = new Vector2(0.5f, 0.5f);
             highlightRect.sizeDelta = new Vector2(size + 16, size + 16);
-            highlightRect.anchoredPosition = new Vector2(0, 15);
+            highlightRect.anchoredPosition = new Vector2(0, 32);
             highlightGo.SetActive(false);
 
             // 外圈底座（深色圆环）
@@ -124,39 +131,37 @@ namespace TowerDefense.UI
             baseRect.anchorMax = new Vector2(0.5f, 0.5f);
             baseRect.pivot = new Vector2(0.5f, 0.5f);
             baseRect.sizeDelta = new Vector2(size, size);
-            baseRect.anchoredPosition = new Vector2(0, 15);
+            baseRect.anchoredPosition = new Vector2(0, 32);
 
-            // 内圈（塔颜色）
+            // 内圈（塔模型精灵，与实际塔一致）
             var innerGo = new GameObject("Inner", typeof(RectTransform));
             innerGo.transform.SetParent(go.transform, false);
             var innerImg = innerGo.AddComponent<Image>();
-            innerImg.color = data.BodyColor;
-            innerImg.sprite = GenerateCircleSprite(64, Color.white);
+            innerImg.color = Color.white;
+            innerImg.sprite = TowerVisualFactory.GetTowerSprite(data.Type);
+            innerImg.preserveAspect = true;
             var innerRect = innerGo.GetComponent<RectTransform>();
             innerRect.anchorMin = new Vector2(0.5f, 0.5f);
             innerRect.anchorMax = new Vector2(0.5f, 0.5f);
             innerRect.pivot = new Vector2(0.5f, 0.5f);
-            innerRect.sizeDelta = new Vector2(size - 14, size - 14);
-            innerRect.anchoredPosition = new Vector2(0, 15);
-
-            // 塔顶颜色小图标（内圈中心的小圆点）
-            var topIconGo = new GameObject("TopIcon", typeof(RectTransform));
-            topIconGo.transform.SetParent(go.transform, false);
-            var topIconImg = topIconGo.AddComponent<Image>();
-            topIconImg.color = data.TopColor;
-            topIconImg.sprite = GenerateCircleSprite(32, Color.white);
-            var topIconRect = topIconGo.GetComponent<RectTransform>();
-            topIconRect.anchorMin = new Vector2(0.5f, 0.5f);
-            topIconRect.anchorMax = new Vector2(0.5f, 0.5f);
-            topIconRect.pivot = new Vector2(0.5f, 0.5f);
-            topIconRect.sizeDelta = new Vector2(size * 0.4f, size * 0.4f);
-            topIconRect.anchoredPosition = new Vector2(0, 15);
+            innerRect.sizeDelta = new Vector2(size - 8, size - 8);
+            innerRect.anchoredPosition = new Vector2(0, 32);
 
             // 塔名称（圆形内底部）
-            UIManager.CreateText(go.transform, "Name", data.DisplayName, 18,
-                TextAnchor.MiddleCenter, new Vector2(size - 10, 26), new Vector2(0, 2),
+            // 塔名称（圆形下方，深色背景）
+            var nameBgGo = new GameObject("NameBg", typeof(RectTransform));
+            nameBgGo.transform.SetParent(go.transform, false);
+            var nameBgImg = nameBgGo.AddComponent<Image>();
+            nameBgImg.color = new Color(0.1f, 0.08f, 0.05f, 0.9f);
+            var nameBgRect = nameBgGo.GetComponent<RectTransform>();
+            nameBgRect.anchorMin = new Vector2(0.5f, 0.5f);
+            nameBgRect.anchorMax = new Vector2(0.5f, 0.5f);
+            nameBgRect.pivot = new Vector2(0.5f, 0.5f);
+            nameBgRect.sizeDelta = new Vector2(size - 5, 30);
+            nameBgRect.anchoredPosition = new Vector2(0, -22);
+            UIManager.CreateText(nameBgGo.transform, "Name", data.DisplayName, 26,
+                TextAnchor.MiddleCenter, new Vector2(size - 10, 28), Vector2.zero,
                 Color.white);
-
             // 花费标签（圆形下方）
             var costBgGo = new GameObject("CostBg", typeof(RectTransform));
             costBgGo.transform.SetParent(go.transform, false);
@@ -167,9 +172,9 @@ namespace TowerDefense.UI
             costBgRect.anchorMax = new Vector2(0.5f, 0);
             costBgRect.pivot = new Vector2(0.5f, 0);
             costBgRect.sizeDelta = new Vector2(85, 30);
-            costBgRect.anchoredPosition = new Vector2(0, -5);
+            costBgRect.anchoredPosition = new Vector2(0, -52);
 
-            var costText = UIManager.CreateText(costBgGo.transform, "Cost", $"{data.BuildCost}", 20,
+            var costText = UIManager.CreateText(costBgGo.transform, "Cost", $"{data.BuildCost}", 28,
                 TextAnchor.MiddleCenter, new Vector2(75, 26), new Vector2(5, 0),
                 new Color(1f, 0.85f, 0.3f));
 
@@ -211,6 +216,7 @@ namespace TowerDefense.UI
                 TowerPlacer.Instance.CancelPlacing();
                 _selectedTower = null;
                 SetHighlight(buttonGo, false);
+                HideDescription();
             }
             else
             {
@@ -218,6 +224,7 @@ namespace TowerDefense.UI
                 ClearAllHighlights();
                 _selectedTower = data;
                 SetHighlight(buttonGo, true);
+                ShowDescription(data);
                 TowerPlacer.Instance.StartPlacing(data);
             }
         }
@@ -254,6 +261,23 @@ namespace TowerDefense.UI
         {
             _selectedTower = null;
             ClearAllHighlights();
+            HideDescription();
+        }
+
+        private void ShowDescription(TowerData data)
+        {
+            if (_descText != null && !string.IsNullOrEmpty(data.Description))
+            {
+                _descText.text = $"{data.DisplayName}：{data.Description}";
+            }
+        }
+
+        private void HideDescription()
+        {
+            if (_descText != null)
+            {
+                _descText.text = "";
+            }
         }
 
         /// <summary>
@@ -318,7 +342,7 @@ namespace TowerDefense.UI
             _button.interactable = canAfford;
             if (_innerImg != null)
             {
-                _innerImg.color = canAfford ? _normalInnerColor : new Color(0.3f, 0.3f, 0.3f, 0.6f);
+                _innerImg.color = canAfford ? Color.white : new Color(0.5f, 0.5f, 0.5f, 0.5f);
             }
             if (_baseImg != null)
             {
@@ -332,3 +356,13 @@ namespace TowerDefense.UI
         }
     }
 }
+
+
+
+
+
+
+
+
+
+

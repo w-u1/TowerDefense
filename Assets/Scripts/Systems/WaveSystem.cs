@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using TowerDefense.Core;
@@ -52,7 +52,7 @@ namespace TowerDefense.Systems
         [SerializeField] private List<WaveConfig> _waves = new List<WaveConfig>();
 
         [Tooltip("是否自动开始下一波")]
-        [SerializeField] private bool _autoStartNextWave = false;
+        [SerializeField] private bool _autoStartNextWave = true;
 
         [Tooltip("路径点")]
         [SerializeField] private Transform[] _pathPoints;
@@ -63,6 +63,9 @@ namespace TowerDefense.Systems
         private int _totalEnemiesInWave = 0;
         private bool _isWaveActive = false;
         private Coroutine _waveCoroutine;
+        private float _waveCountdown = 0f;
+        public float WaveCountdown => _waveCountdown;
+        private bool _countdownActive = false;
 
         public int CurrentWaveNumber => _currentWaveIndex + 1;
         public int TotalWaves => _waves.Count;
@@ -96,6 +99,15 @@ namespace TowerDefense.Systems
         public void SetWaves(List<WaveConfig> waves)
         {
             _waves = waves;
+        }
+
+        /// <summary>
+        /// 游戏开始时自动倒计时并开始第一波。
+        /// </summary>
+        public void StartFirstWaveCountdown()
+        {
+            _waveCountdown = GameManager.Instance.WaveInterval;
+            _countdownActive = true;
         }
 
         /// <summary>
@@ -236,20 +248,25 @@ namespace TowerDefense.Systems
 
                 if (_autoStartNextWave)
                 {
-                    StartCoroutine(AutoStartNextWaveCoroutine());
+                    _waveCountdown = GameManager.Instance.WaveInterval;
+                    _countdownActive = true;
+            }
+        }
+        }
+
+        private void Update()
+        {
+            if (_countdownActive)
+            {
+                _waveCountdown -= Time.deltaTime;
+                if (_waveCountdown <= 0)
+                {
+                    _waveCountdown = 0;
+                    _countdownActive = false;
+                    StartNextWave();
                 }
             }
         }
-
-        /// <summary>
-        /// 自动开始下一波协程。
-        /// </summary>
-        private IEnumerator AutoStartNextWaveCoroutine()
-        {
-            yield return new WaitForSeconds(GameManager.Instance.WaveInterval);
-            StartNextWave();
-        }
-
         /// <summary>
         /// 跳过波次间隙，立即开始下一波（给予奖励金币）。
         /// </summary>
@@ -281,3 +298,5 @@ namespace TowerDefense.Systems
         }
     }
 }
+
+

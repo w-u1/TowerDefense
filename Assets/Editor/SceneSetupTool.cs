@@ -1,4 +1,4 @@
-#if UNITY_EDITOR
+﻿#if UNITY_EDITOR
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -19,6 +19,12 @@ namespace TowerDefense.EditorTools
         [MenuItem("Tools/Tower Defense/Create Game Scene %#t")]
         public static void CreateGameScene()
         {
+            // Play模式下禁止创建场景
+            if (EditorApplication.isPlaying)
+            {
+                EditorUtility.DisplayDialog("提示", "请先退出 Play 模式，再创建游戏场景。", "确定");
+                return;
+            }
             // 确保目录存在
             if (!AssetDatabase.IsValidFolder(SceneDirectory))
             {
@@ -45,6 +51,12 @@ namespace TowerDefense.EditorTools
         [MenuItem("Tools/Tower Defense/Add Bootstrapper to Current Scene")]
         public static void AddBootstrapperToCurrentScene()
         {
+            // Play模式下禁止修改场景
+            if (EditorApplication.isPlaying)
+            {
+                EditorUtility.DisplayDialog("提示", "请先退出 Play 模式，再添加 Bootstrapper。", "确定");
+                return;
+            }
             // 检查是否已存在
             var existing = Object.FindObjectOfType<GameBootstrapper>();
             if (existing != null)
@@ -84,3 +96,4 @@ namespace TowerDefense.EditorTools
     }
 }
 #endif
+

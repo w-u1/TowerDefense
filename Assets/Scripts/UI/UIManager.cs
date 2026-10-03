@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 using TowerDefense.Core;
 
@@ -23,6 +23,8 @@ namespace TowerDefense.UI
         public GameOverPanel GameOver { get; private set; }
         public TowerInfoPanel TowerInfo { get; private set; }
         public LevelSelectPanel LevelSelect { get; private set; }
+        public MainMenuPanel MainMenu { get; private set; }
+        public PauseMenuPanel PauseMenu { get; private set; }
 
         protected override void OnSingletonAwake()
         {
@@ -63,6 +65,17 @@ namespace TowerDefense.UI
         /// </summary>
         public void InitializeUIBase()
         {
+            // 主界面面板
+            var mmGo = CreateUIPanelObject("MainMenu");
+            MainMenu = mmGo.AddComponent<MainMenuPanel>();
+            MainMenu.Initialize();
+
+            // 暂停菜单面板
+            var pmGo = CreateUIPanelObject("PauseMenu");
+            PauseMenu = pmGo.AddComponent<PauseMenuPanel>();
+            PauseMenu.Initialize();
+            PauseMenu.Hide();
+
             // 关卡选择面板
             var lsGo = CreateUIPanelObject("LevelSelect");
             LevelSelect = lsGo.AddComponent<LevelSelectPanel>();
@@ -200,3 +213,5 @@ namespace TowerDefense.UI
         }
     }
 }
+
+

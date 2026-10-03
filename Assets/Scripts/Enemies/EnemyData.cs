@@ -16,7 +16,11 @@ namespace TowerDefense.Enemies
         /// <summary>Boss：极高血量，每5波出现</summary>
         Boss,
         /// <summary>精英敌人：高血量高奖励，中型</summary>
-        Elite
+        Elite,
+        /// <summary>隐身敌人：需要特定塔才能看到/攻击</summary>
+        Stealth,
+        /// <summary>飞行敌人：需要对空塔才能攻击</summary>
+        Flying
     }
 
     /// <summary>
@@ -63,5 +67,11 @@ namespace TowerDefense.Enemies
 
         [Tooltip("分裂出的敌人数据")]
         public EnemyData SplitChildData = null;
+
+        [Tooltip("是否隐身（需要对空塔/特殊塔才能攻击）")]
+        public bool IsStealth = false;
+
+        [Tooltip("是否飞行（需要对空塔才能攻击）")]
+        public bool IsFlying = false;
     }
 }

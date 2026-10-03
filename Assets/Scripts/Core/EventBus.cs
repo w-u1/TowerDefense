@@ -5,7 +5,7 @@ namespace TowerDefense.Core
 {
     /// <summary>
     /// 轻量级事件总线。支持按事件类型订阅/取消订阅/派发，解耦各系统间的直接引用。
-    /// 事件参数使用 struct 或 class，通过泛型方法派发。
+    /// 事件参数使用 struct，通过泛型方法派发。
     /// </summary>
     public static class EventBus
     {
@@ -19,7 +19,20 @@ namespace TowerDefense.Core
             var type = typeof(T);
             if (_handlers.TryGetValue(type, out var existing))
             {
-                _handlers[type] = Delegate.Combine(existing, handler);
+                // 防止重复订阅同一个handler
+                bool alreadySubscribed = false;
+                foreach (var del in existing.GetInvocationList())
+                {
+                    if (del == (Delegate)handler)
+                    {
+                        alreadySubscribed = true;
+                        break;
+                    }
+                }
+                if (!alreadySubscribed)
+                {
+                    _handlers[type] = Delegate.Combine(existing, handler);
+                }
             }
             else
             {
@@ -54,16 +67,32 @@ namespace TowerDefense.Core
         {
             if (_handlers.TryGetValue(typeof(T), out var handler))
             {
-                (handler as Action<T>)?.Invoke(eventData);
+                try
+                {
+                    (handler as Action<T>)?.Invoke(eventData);
+                }
+                catch (Exception e)
+                {
+                    UnityEngine.Debug.LogError($"[EventBus] 事件 {typeof(T).Name} 派发异常: {e.Message}\n{e.StackTrace}");
+                }
             }
         }
 
         /// <summary>
-        /// 清空所有订阅（用于测试或场景重置）。
+        /// 清空所有订阅（用于游戏重置/场景切换）。
         /// </summary>
         public static void ClearAll()
         {
             _handlers.Clear();
+            UnityEngine.Debug.Log("[EventBus] 所有事件订阅已清空");
+        }
+
+        /// <summary>
+        /// 获取当前订阅的事件数量（调试用）。
+        /// </summary>
+        public static int GetSubscriberCount()
+        {
+            return _handlers.Count;
         }
     }
 
@@ -134,4 +163,7 @@ namespace TowerDefense.Core
     {
         public int Remaining;
     }
+
+    /// <summary>游戏重置事件</summary>
+    public struct GameResetEvent { }
 }

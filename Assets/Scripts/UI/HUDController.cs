@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 using TowerDefense.Core;
 using TowerDefense.Systems;
@@ -14,10 +14,9 @@ namespace TowerDefense.UI
         private Text _livesText;
         private Text _waveText;
         private Text _enemyCountText;
-        private Button _startWaveButton;
         private Button _pauseButton;
         private Button _speedButton;
-        private Text _startWaveButtonText;
+        private Text _countdownText;
         private Text _speedButtonText;
         private Text _pauseButtonText;
         private Image _waveProgressFill;
@@ -42,16 +41,13 @@ namespace TowerDefense.UI
                 new Vector2(0, 3), new Vector2(0, -42),
                 anchorMin: new Vector2(0, 1), anchorMax: new Vector2(1, 1));
 
-            // ===== 左侧：金币徽章 =====
-            CreateBadge("GoldBadge", new Vector2(20, -48), 68,
-                new Color(1f, 0.82f, 0.15f, 1f), new Color(0.6f, 0.45f, 0.1f, 1f),
-                "200", new Color(0.4f, 0.25f, 0f, 1f), out _goldText);
+            // ===== 左侧：金币标签 =====
+            _goldText = CreateResourceLabel("GoldLabel", new Vector2(40, -50), "金币", "200",
+                new Color(1f, 0.82f, 0.15f, 0.9f), new Color(0.4f, 0.25f, 0f, 1f), new Color(0.4f, 0.25f, 0f, 1f));
 
-            // ===== 生命徽章 =====
-            CreateBadge("LivesBadge", new Vector2(150, -48), 68,
-                new Color(0.95f, 0.3f, 0.3f, 1f), new Color(0.6f, 0.15f, 0.15f, 1f),
-                "20", Color.white, out _livesText);
-
+            // ===== 生命标签 =====
+            _livesText = CreateResourceLabel("LivesLabel", new Vector2(230, -48), "生命", "20",
+                new Color(0.95f, 0.3f, 0.3f, 0.9f), Color.white, Color.white);
             // ===== 中间：波次徽章 =====
             var waveBadgeGo = new GameObject("WaveBadge", typeof(RectTransform));
             waveBadgeGo.transform.SetParent(transform, false);
@@ -62,15 +58,15 @@ namespace TowerDefense.UI
             waveBadgeRect.anchorMin = new Vector2(0.5f, 1);
             waveBadgeRect.anchorMax = new Vector2(0.5f, 1);
             waveBadgeRect.pivot = new Vector2(0.5f, 0.5f);
-            waveBadgeRect.sizeDelta = new Vector2(220, 68);
-            waveBadgeRect.anchoredPosition = new Vector2(0, -48);
+            waveBadgeRect.sizeDelta = new Vector2(240, 76);
+            waveBadgeRect.anchoredPosition = new Vector2(0, -50);
 
-            _waveText = UIManager.CreateText(waveBadgeGo.transform, "WaveText", "波次 0 / 10", 36,
-                TextAnchor.MiddleCenter, new Vector2(210, 44), new Vector2(0, 6),
+            _waveText = UIManager.CreateText(waveBadgeGo.transform, "WaveText", "波次 0 / 10", 32,
+                TextAnchor.MiddleCenter, new Vector2(220, 36), new Vector2(0, 14),
                 new Color(1f, 0.9f, 0.5f));
-            _enemyCountText = UIManager.CreateText(waveBadgeGo.transform, "EnemyCount", "", 24,
-                TextAnchor.MiddleCenter, new Vector2(210, 26), new Vector2(0, -16),
-                new Color(0.8f, 0.75f, 0.6f));
+            _enemyCountText = UIManager.CreateText(waveBadgeGo.transform, "EnemyCount", "", 20,
+                TextAnchor.MiddleCenter, new Vector2(220, 22), new Vector2(0, -18),
+                new Color(0.85f, 0.8f, 0.7f));
 
             // 波次进度条
             var progressBgGo = new GameObject("ProgressBg", typeof(RectTransform));
@@ -96,27 +92,29 @@ namespace TowerDefense.UI
             fillRect.anchoredPosition = Vector2.zero;
 
             // ===== 右侧：控制按钮 =====
-            // 开始波次按钮（绿色大按钮，保卫萝卜风格）
-            _startWaveButton = CreateRoundButton("StartWaveButton", "开始波次", 200, 66,
-                new Vector2(-400, -48), new Color(0.3f, 0.75f, 0.3f, 1f), new Color(0.15f, 0.5f, 0.15f, 1f));
-            _startWaveButton.onClick.AddListener(OnStartWaveClicked);
-            _startWaveButtonText = _startWaveButton.GetComponentInChildren<Text>();
-
+            // 波次倒计时文本（替代开始波次按钮）
+            var countdownBg = new GameObject("CountdownBg", typeof(RectTransform));
+            countdownBg.transform.SetParent(transform, false);
+            var countdownBgImg = countdownBg.AddComponent<Image>();
+            countdownBgImg.color = new Color(0.15f, 0.12f, 0.08f, 0.9f);
+            var countdownBgRect = countdownBg.GetComponent<RectTransform>();
+            countdownBgRect.anchorMin = new Vector2(0.5f, 1);
+            countdownBgRect.anchorMax = new Vector2(0.5f, 1);
+            countdownBgRect.pivot = new Vector2(0.5f, 1);
+            countdownBgRect.sizeDelta = new Vector2(200, 40);
+            countdownBgRect.anchoredPosition = new Vector2(0, -95);
+            _countdownText = UIManager.CreateText(countdownBg.transform, "Countdown", "下一波: 5.0s", 22,
+                TextAnchor.MiddleCenter, new Vector2(190, 36), Vector2.zero,
+                new Color(1f, 0.9f, 0.4f));
             // 速度按钮
             _speedButton = CreateRoundButton("SpeedButton", "1x", 80, 66,
-                new Vector2(-250, -48), new Color(0.35f, 0.55f, 0.8f, 1f), new Color(0.2f, 0.35f, 0.6f, 1f));
+                new Vector2(-250, -50), new Color(0.35f, 0.55f, 0.8f, 1f), new Color(0.2f, 0.35f, 0.6f, 1f));
             _speedButton.onClick.AddListener(OnSpeedClicked);
             _speedButtonText = _speedButton.GetComponentInChildren<Text>();
 
-            // 暂停按钮
-            _pauseButton = CreateRoundButton("PauseButton", "暂停", 90, 66,
-                new Vector2(-150, -48), new Color(0.7f, 0.5f, 0.3f, 1f), new Color(0.5f, 0.35f, 0.2f, 1f));
-            _pauseButton.onClick.AddListener(OnPauseClicked);
-            _pauseButtonText = _pauseButton.GetComponentInChildren<Text>();
-
             // 菜单按钮
             var menuButton = CreateRoundButton("MenuButton", "菜单", 90, 66,
-                new Vector2(-50, -48), new Color(0.4f, 0.4f, 0.6f, 1f), new Color(0.25f, 0.25f, 0.4f, 1f));
+                new Vector2(-150, -50), new Color(0.4f, 0.4f, 0.6f, 1f), new Color(0.25f, 0.25f, 0.4f, 1f));
             menuButton.onClick.AddListener(OnMenuClicked);
 
             // 订阅事件
@@ -171,7 +169,7 @@ namespace TowerDefense.UI
             textComp.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             textComp.alignment = TextAnchor.MiddleLeft;
             textComp.color = textColor;
-            textComp.fontSize = 34;
+            textComp.fontSize = 32;
             textComp.fontStyle = FontStyle.Bold;
             var textRect = textGo.GetComponent<RectTransform>();
             textRect.anchorMin = new Vector2(0, 0.5f);
@@ -189,6 +187,72 @@ namespace TowerDefense.UI
             rect.anchoredPosition = pos;
         }
 
+
+        /// <summary>
+        /// 创建资源标签（金币/生命文字样式）。
+        /// </summary>
+        private Text CreateResourceLabel(string name, Vector2 pos, string label, string value,
+            Color bgColor, Color labelColor, Color valueColor)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(transform, false);
+
+            // 圆角背景
+            var bgGo = new GameObject("Bg", typeof(RectTransform));
+            bgGo.transform.SetParent(go.transform, false);
+            var bgImg = bgGo.AddComponent<Image>();
+            bgImg.sprite = GenerateRoundedSprite(64, 20, bgColor);
+            var bgRect = bgGo.GetComponent<RectTransform>();
+            bgRect.anchorMin = new Vector2(0, 0.5f);
+            bgRect.anchorMax = new Vector2(0, 0.5f);
+            bgRect.pivot = new Vector2(0, 0.5f);
+            bgRect.sizeDelta = new Vector2(150, 50);
+            bgRect.anchoredPosition = Vector2.zero;
+
+            // 标签文字
+            var labelGo = new GameObject("Label", typeof(RectTransform));
+            labelGo.transform.SetParent(go.transform, false);
+            var labelText = labelGo.AddComponent<Text>();
+            labelText.text = label;
+            labelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            labelText.alignment = TextAnchor.MiddleCenter;
+            labelText.color = labelColor;
+            labelText.fontSize = 20;
+            labelText.fontStyle = FontStyle.Bold;
+            var labelRect = labelGo.GetComponent<RectTransform>();
+            labelRect.anchorMin = new Vector2(0, 0.5f);
+            labelRect.anchorMax = new Vector2(0, 0.5f);
+            labelRect.pivot = new Vector2(0, 0.5f);
+            labelRect.sizeDelta = new Vector2(50, 50);
+            labelRect.anchoredPosition = new Vector2(8, 0);
+
+            // 数值文字（动态更新）
+            var valueGo = new GameObject("Value", typeof(RectTransform));
+            valueGo.transform.SetParent(go.transform, false);
+            var valueText = valueGo.AddComponent<Text>();
+            valueText.text = value;
+            valueText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            valueText.alignment = TextAnchor.MiddleCenter;
+            valueText.color = valueColor;
+            valueText.fontSize = 26;
+            valueText.fontStyle = FontStyle.Bold;
+            var valueRect = valueGo.GetComponent<RectTransform>();
+            valueRect.anchorMin = new Vector2(0, 0.5f);
+            valueRect.anchorMax = new Vector2(0, 0.5f);
+            valueRect.pivot = new Vector2(0, 0.5f);
+            valueRect.sizeDelta = new Vector2(80, 50);
+            valueRect.anchoredPosition = new Vector2(58, 0);
+
+            // 整体位置
+            var rect = go.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0, 1);
+            rect.anchorMax = new Vector2(0, 1);
+            rect.pivot = new Vector2(0, 0.5f);
+            rect.sizeDelta = new Vector2(150, 50);
+            rect.anchoredPosition = pos;
+
+            return valueText;
+        }
         /// <summary>
         /// 创建圆角按钮（保卫萝卜风格）。
         /// </summary>
@@ -338,8 +402,7 @@ namespace TowerDefense.UI
         {
             _waveText.text = $"波次 {evt.WaveNumber} / {GameManager.Instance.TotalWaves}";
             _enemyCountText.text = $"剩余敌人: {evt.TotalEnemies}";
-            _startWaveButton.interactable = false;
-            _startWaveButtonText.text = "战斗中...";
+            _countdownText.text = "战斗中...";
             UpdateWaveProgress(evt.WaveNumber);
         }
 
@@ -347,8 +410,7 @@ namespace TowerDefense.UI
         {
             _waveText.text = $"波次 {currentWave} / {totalWaves}";
             _enemyCountText.text = "准备战斗";
-            _startWaveButton.interactable = true;
-            _startWaveButtonText.text = "开始波次";
+            _countdownText.text = "准备中...";
         }
 
         private void OnWaveCompleted(WaveCompletedEvent evt)
@@ -356,8 +418,7 @@ namespace TowerDefense.UI
             _enemyCountText.text = "波次完成！";
             if (evt.WaveNumber < GameManager.Instance.TotalWaves)
             {
-                _startWaveButton.interactable = true;
-                _startWaveButtonText.text = "开始下一波";
+                // 倒计时自动更新
             }
         }
 
@@ -365,23 +426,14 @@ namespace TowerDefense.UI
         {
             switch (evt.NewState)
             {
-                case GameState.Preparation:
-                    _startWaveButton.interactable = true;
-                    _startWaveButtonText.text = "开始波次";
-                    break;
-                case GameState.BetweenWaves:
-                    _startWaveButton.interactable = true;
-                    _startWaveButtonText.text = "开始下一波";
-                    break;
-                case GameState.InWave:
-                    _startWaveButton.interactable = false;
-                    _startWaveButtonText.text = "战斗中...";
-                    break;
+                case GameState.Preparation: _countdownText.text = "准备中..."; break;
+                case GameState.BetweenWaves: break;
+                case GameState.InWave: _countdownText.text = "战斗中..."; break;
                 case GameState.Paused:
-                    _pauseButtonText.text = "继续";
+                    if (_pauseButtonText != null) _pauseButtonText.text = "继续";
                     break;
                 default:
-                    _pauseButtonText.text = "暂停";
+                    if (_pauseButtonText != null) _pauseButtonText.text = "暂停";
                     break;
             }
         }
@@ -397,18 +449,29 @@ namespace TowerDefense.UI
             rect.anchorMax = new Vector2(progress, 1);
         }
 
-        private void OnStartWaveClicked()
+        private void Update()
         {
-            var waveSystem = GameManager.Instance.WaveSystem;
-            if (waveSystem != null && !waveSystem.IsWaveActive)
+            // 更新波次倒计时
+            if (_countdownText != null && GameManager.Instance != null)
             {
-                waveSystem.StartNextWave();
+                var ws = GameManager.Instance.WaveSystem;
+                if (ws != null && ws.WaveCountdown > 0)
+                {
+                    _countdownText.text = $"下一波: {ws.WaveCountdown:F1}s";
+                }
             }
         }
-
         private void OnPauseClicked()
         {
             GameManager.Instance.TogglePause();
+        }
+
+        /// <summary>重置倍速为1x（重新开始关卡时调用）。</summary>
+        public void ResetSpeed()
+        {
+            _currentSpeedIndex = 0;
+            Time.timeScale = 1f;
+            if (_speedButtonText != null) _speedButtonText.text = "1x";
         }
 
         private void OnSpeedClicked()
@@ -421,9 +484,8 @@ namespace TowerDefense.UI
 
         private void OnMenuClicked()
         {
-            // 暂停并显示选关面板
-            Time.timeScale = 0f;
-            UIManager.Instance.LevelSelect.Show();
+            // 显示暂停菜单
+            UIManager.Instance.PauseMenu.Show();
         }
 
         /// <summary>
@@ -443,3 +505,12 @@ namespace TowerDefense.UI
         }
     }
 }
+
+
+
+
+
+
+
+
+

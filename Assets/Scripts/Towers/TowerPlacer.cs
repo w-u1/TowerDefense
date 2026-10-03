@@ -1,9 +1,10 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using TowerDefense.Core;
 using TowerDefense.Enemies;
 using TowerDefense.UI;
+using TowerDefense.Systems;
 
 namespace TowerDefense.Towers
 {
@@ -36,7 +37,7 @@ namespace TowerDefense.Towers
 
         // 路径点（用于禁止在路径上放置）
         private Vector3[] _pathPoints;
-        private const float PathClearance = 0.7f; // 路径周围不可放置的半径
+        private const float PathClearance = 0.3f; // 路径周围不可放置的半径
 
         // 摄像机引用
         private Camera _mainCamera;
@@ -155,7 +156,7 @@ namespace TowerDefense.Towers
             foreach (var tower in _builtTowers)
             {
                 if (tower == null) continue;
-                if (Vector3.Distance(tower.transform.position, position) < 0.8f)
+                if (Vector3.Distance(tower.transform.position, position) < 0.5f)
                 {
                     return false;
                 }
@@ -174,6 +175,17 @@ namespace TowerDefense.Towers
                 }
             }
 
+
+            // 不在障碍物上：检查所有障碍物
+            var allObstacles = Object.FindObjectsOfType<Obstacle>();
+            foreach (var obs in allObstacles)
+            {
+                if (obs == null) continue;
+                if (Vector3.Distance(obs.transform.position, position) < obs.Radius * 0.6f + 0.1f)
+                {
+                    return false;
+                }
+            }
             return true;
         }
 
@@ -192,6 +204,11 @@ namespace TowerDefense.Towers
 
         private void Update()
         {
+            // 右键取消障碍物选中
+            if (Input.GetMouseButtonDown(1) && Obstacle.Selected != null)
+            {
+                Obstacle.Selected.Deselect();
+            }
             if (_isPlacing && _previewTower != null)
             {
                 UpdatePreviewPosition();
@@ -303,69 +320,149 @@ namespace TowerDefense.Towers
         }
 
         /// <summary>
-        /// 程序化创建塔GameObject。
+        /// 创建塔GameObject（使用素材精灵）。
         /// </summary>
         private GameObject CreateTowerGameObject(TowerData data, bool isPreview)
         {
             var go = new GameObject();
             go.transform.SetParent(_towerContainer);
 
-            // 圆形石台基座（保卫萝卜风格）
-            var platform = new GameObject("Platform");
-            platform.transform.SetParent(go.transform);
-            var platformRenderer = platform.AddComponent<SpriteRenderer>();
-            platformRenderer.sprite = GenerateCircleSprite(64, new Color(0.75f, 0.7f, 0.6f, 1f));
-            platformRenderer.sortingOrder = 2;
-            platform.transform.localScale = Vector3.one * 1.3f;
             // 基座阴影
             var platformShadow = new GameObject("PlatformShadow");
             platformShadow.transform.SetParent(go.transform);
             var shadowRenderer = platformShadow.AddComponent<SpriteRenderer>();
             shadowRenderer.sprite = GenerateCircleSprite(64, new Color(0f, 0f, 0f, 0.25f));
             shadowRenderer.sortingOrder = 1;
-            shadowRenderer.transform.localScale = new Vector3(1.35f, 1.1f, 1f);
-            shadowRenderer.transform.localPosition = new Vector3(0.05f, -0.08f, 0);
+            shadowRenderer.transform.localScale = new Vector3(1.3f, 0.9f, 1f);
+            shadowRenderer.transform.localPosition = new Vector3(0.05f, -0.15f, 0);
 
-            // 底座
-            var body = new GameObject("Body");
-            body.transform.SetParent(go.transform);
-            var bodyRenderer = body.AddComponent<SpriteRenderer>();
-            bodyRenderer.sprite = GenerateTowerBaseSprite(data);
-            bodyRenderer.color = data.BodyColor;
-            bodyRenderer.sortingOrder = 3;
-            body.transform.localPosition = new Vector3(0, 0.1f, 0);
+            // 塔的完整视觉（程序化生成，包含基座+炮塔）
+            var visual = new GameObject("Visual");
+            visual.transform.SetParent(go.transform);
+            var visualRenderer = visual.AddComponent<SpriteRenderer>();
+            visualRenderer.sprite = TowerVisualFactory.GetTowerSprite(data.Type);
+            visualRenderer.sortingOrder = 3;
+            visual.transform.localPosition = Vector3.zero;
+            visual.transform.localScale = Vector3.one * 1.5f;
 
-            // 炮塔（可旋转）
-            var turret = new GameObject("Turret");
-            turret.transform.SetParent(go.transform);
-            var turretRenderer = turret.AddComponent<SpriteRenderer>();
-            turretRenderer.sprite = GenerateTowerTopSprite(data);
-            turretRenderer.color = data.TopColor;
-            turretRenderer.sortingOrder = 4;
-            turret.transform.localPosition = new Vector3(0, 0.15f, 0);
-
-            // 炮口点
+            // 炮口点（在塔的顶部，炮塔朝向目标时旋转）
             var muzzle = new GameObject("Muzzle");
-            muzzle.transform.SetParent(turret.transform);
-            muzzle.transform.localPosition = new Vector3(0, 0.4f, 0);
+            muzzle.transform.SetParent(visual.transform);
+            muzzle.transform.localPosition = new Vector3(0, 0.45f, 0);
 
             // 范围指示器
             var rangeIndicator = new GameObject("RangeIndicator");
             rangeIndicator.transform.SetParent(go.transform);
             var rangeRenderer = rangeIndicator.AddComponent<SpriteRenderer>();
             rangeRenderer.sprite = GenerateRangeSprite();
-            rangeRenderer.color = Color.white; // 白色，让Sprite本身的颜色完全显示
-            rangeRenderer.sortingOrder = 9; // 确保在最上层可见
+            rangeRenderer.color = Color.white;
+            rangeRenderer.sortingOrder = 9;
             rangeIndicator.SetActive(false);
 
             if (!isPreview)
             {
-                var tower = go.AddComponent<Tower>();
-                // 通过反射或直接设置引用（简化：Tower在Initialize时自己找子对象）
+                go.AddComponent<Tower>();
             }
 
             go.transform.localScale = Vector3.one * data.Size;
             return go;
+        }
+
+        /// <summary>
+        /// 根据塔类型应用素材精灵。优先用 SpriteManager 预加载的精灵；
+        /// 若预加载失败，直接用 Resources 动态加载 Texture2D 并创建 Sprite，
+        /// 确保塔一定能显示素材形状而不是 fallback 圆形。
+        /// </summary>
+        private void ApplyTowerSprites(TowerType type, SpriteRenderer bodyRenderer, SpriteRenderer turretRenderer)
+        {
+            // 塔基座（所有塔共用）
+            Sprite baseSprite = LoadTowerSprite("towerDefense_tile245");
+            if (baseSprite != null)
+            {
+                bodyRenderer.sprite = baseSprite;
+                bodyRenderer.color = Color.white;
+            }
+            else
+            {
+                bodyRenderer.sprite = GenerateCircleSprite(64, Color.gray);
+            }
+
+            // 炮塔（按类型选择不同造型，保持素材原色，颜色靠下方基座区分）
+            Sprite turretSprite = null;
+            switch (type)
+            {
+                case TowerType.Archer:
+                    turretSprite = LoadTowerSprite("towerDefense_tile249");
+                    break;
+                case TowerType.Cannon:
+                    turretSprite = LoadTowerSprite("towerDefense_tile250");
+                    break;
+                case TowerType.Frost:
+                    turretSprite = LoadTowerSprite("towerDefense_tile247");
+                    break;
+                case TowerType.Laser:
+                    turretSprite = LoadTowerSprite("towerDefense_tile203");
+                    break;
+                case TowerType.Poison:
+                    turretSprite = LoadTowerSprite("towerDefense_tile248");
+                    break;
+                case TowerType.Support:
+                    turretSprite = LoadTowerSprite("towerDefense_tile206");
+                    break;
+            }
+
+            if (turretSprite != null)
+            {
+                turretRenderer.sprite = turretSprite;
+                turretRenderer.color = Color.white; // 保持素材原色
+            }
+            else
+            {
+                turretRenderer.sprite = GenerateCircleSprite(32, new Color(0.3f, 0.3f, 0.3f));
+            }
+        }
+
+        /// <summary>
+        /// 动态加载塔精灵：先试 Sprite，再试 Texture2D，
+        /// 最后直接从磁盘读取 PNG 字节创建纹理（完全绕过 Unity 导入系统）。
+        /// </summary>
+        private Sprite LoadTowerSprite(string name)
+        {
+            Texture2D tex = null;
+
+            // 1. 尝试从 Resources 加载 Texture2D（最可靠，不依赖导入类型）
+            tex = Resources.Load<Texture2D>($"Sprites/{name}");
+
+            // 2. 尝试从 Resources 加载 Sprite，取其纹理
+            if (tex == null)
+            {
+                var spr = Resources.Load<Sprite>($"Sprites/{name}");
+                if (spr != null) tex = spr.texture;
+            }
+
+            // 3. 终极兜底：直接从磁盘读取 PNG 字节
+            if (tex == null)
+            {
+                string diskPath = System.IO.Path.Combine(Application.dataPath, "Resources", "Sprites", name + ".png");
+                if (System.IO.File.Exists(diskPath))
+                {
+                    byte[] bytes = System.IO.File.ReadAllBytes(diskPath);
+                    Texture2D diskTex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                    if (diskTex.LoadImage(bytes)) tex = diskTex;
+                }
+            }
+
+            if (tex == null)
+            {
+                Debug.LogWarning($"[TowerPlacer] 塔素材加载失败: {name}");
+                return null;
+            }
+
+            // 统一用 PPU=100 创建 sprite，确保尺寸一致
+            var created = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height),
+                new Vector2(0.5f, 0.5f), 100f);
+            created.name = name;
+            return created;
         }
 
         /// <summary>
@@ -551,6 +648,19 @@ namespace TowerDefense.Towers
             return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
         }
 
+
+        /// <summary>
+        /// 生成方形 Sprite（用于加载失败时的明显标记）。
+        /// </summary>
+        private Sprite GenerateSquareSprite(int size, Color color)
+        {
+            Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            Color[] pixels = new Color[size * size];
+            for (int i = 0; i < pixels.Length; i++) pixels[i] = color;
+            tex.SetPixels(pixels);
+            tex.Apply();
+            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
+        }
         /// <summary>
         /// 生成范围指示Sprite。
         /// </summary>
@@ -671,23 +781,7 @@ namespace TowerDefense.Towers
 
         private Sprite GenerateProjectileSprite(TowerData data)
         {
-            int size = 32;
-            Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-            Color[] pixels = new Color[size * size];
-            Vector2 center = new Vector2(size / 2f, size / 2f);
-
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    float dist = Vector2.Distance(new Vector2(x, y), center);
-                    int idx = y * size + x;
-                    pixels[idx] = dist <= size * 0.3f ? Color.white : Color.clear;
-                }
-            }
-            tex.SetPixels(pixels);
-            tex.Apply();
-            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 32f);
+            return ProjectileVisualFactory.GetProjectileSprite(data.Type);
         }
 
         #endregion
@@ -727,3 +821,11 @@ namespace TowerDefense.Towers
         public TowerType Type;
     }
 }
+
+
+
+
+
+
+
+

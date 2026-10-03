@@ -1,4 +1,4 @@
-#if UNITY_EDITOR
+﻿#if UNITY_EDITOR
 using UnityEditor;
 using UnityEngine;
 
@@ -18,7 +18,7 @@ namespace TowerDefense.EditorTools
 
             // 设置公司和产品名
             PlayerSettings.companyName = "TowerDefense";
-            PlayerSettings.productName = "Tower Defense Demo";
+            PlayerSettings.productName = "塔防大作战";
 
             // 设置默认分辨率
             PlayerSettings.defaultScreenWidth = 1280;

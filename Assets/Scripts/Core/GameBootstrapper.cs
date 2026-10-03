@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using TowerDefense.Core;
 using TowerDefense.Enemies;
@@ -62,11 +62,32 @@ namespace TowerDefense.Core
             // 1. 创建摄像机
             SetupCamera();
 
+            // 1.5 创建精灵素材管理器
+            if (SpriteManager.Instance == null)
+            {
+                var smGo = new GameObject("SpriteManager");
+                smGo.AddComponent<SpriteManager>();
+            }
+
+            // 1.6 创建特效对象池（死亡爆炸/炮口闪光/命中特效）
+            if (EffectsPool.Instance == null)
+            {
+                var epGo = new GameObject("EffectsPool");
+                epGo.AddComponent<EffectsPool>();
+            }
+
+            // 1.7 创建音频管理器（BGM+音效）
+            if (AudioManager.Instance == null)
+            {
+                var audioGo = new GameObject("AudioManager");
+                audioGo.AddComponent<AudioManager>();
+            }
+
             // 2. 初始化UI（包含关卡选择面板）
             UIManager.Instance.InitializeUIBase();
 
-            // 3. 显示关卡选择，选择后才 StartGame()
-            UIManager.Instance.LevelSelect.Show();
+            // 3. 显示主界面（选择关卡后才 StartGame）
+            UIManager.Instance.MainMenu.Show();
         }
 
         /// <summary>
@@ -96,6 +117,8 @@ namespace TowerDefense.Core
 
             // 进入准备状态
             GameManager.Instance.ChangeState(GameState.Preparation);
+            // 自动开始第一波倒计时
+            GameManager.Instance.WaveSystem.StartFirstWaveCountdown();
 
             // 添加可交互奖励
             CreateInteractiveRewards();
@@ -222,6 +245,55 @@ namespace TowerDefense.Core
         }
 
         /// <summary>
+        /// 用草地瓦片铺设整个地图地面。
+        /// </summary>
+        private void CreateTileGround()
+        {
+            var groundRoot = new GameObject("TileGround");
+            groundRoot.transform.SetParent(_mapRoot);
+
+            var sm = SpriteManager.Instance;
+            Sprite grassSprite = null;
+            float tileSize = 1f;
+
+            if (sm != null && sm.GrassTile != null)
+            {
+                grassSprite = sm.GrassTile;
+                tileSize = grassSprite.rect.width / grassSprite.pixelsPerUnit;
+            }
+
+            int cols = Mathf.CeilToInt(_mapWidth / tileSize) + 2;
+            int rows = Mathf.CeilToInt(_mapHeight / tileSize) + 2;
+
+            if (grassSprite == null)
+            {
+                // 后备：纯色背景
+                var mapGo = new GameObject("MapBackground");
+                mapGo.transform.SetParent(_mapRoot);
+                var mapRenderer = mapGo.AddComponent<SpriteRenderer>();
+                mapRenderer.sprite = GenerateMapSprite();
+                mapRenderer.sortingOrder = 0;
+                return;
+            }
+
+            // 合并瓦片到少量纹理以减少DrawCall（简化：直接铺，现代2D可合批）
+            for (int row = 0; row < rows; row++)
+            {
+                for (int col = 0; col < cols; col++)
+                {
+                    float x = -_mapWidth / 2f - tileSize + col * tileSize;
+                    float y = -_mapHeight / 2f - tileSize + row * tileSize;
+
+                    var tileGo = new GameObject($"Grass_{col}_{row}");
+                    tileGo.transform.SetParent(groundRoot.transform);
+                    var sr = tileGo.AddComponent<SpriteRenderer>();
+                    sr.sprite = grassSprite;
+                    sr.sortingOrder = 0;
+                    tileGo.transform.position = new Vector3(x, y, 0);
+                }
+            }
+        }
+        /// <summary>
         /// 根据关卡编号返回路径点。
         /// </summary>
         private Vector3[] GetLevelPath(int level)
@@ -274,6 +346,38 @@ namespace TowerDefense.Core
                         new Vector3(8f, -4f, 0),
                         new Vector3(w, -4f, 0)
                     };
+                case 4:
+                    // 第四关：火山迂回（长路径多转弯）
+                    return new Vector3[]
+                    {
+                        new Vector3(-w, 4f, 0),
+                        new Vector3(-5f, 4f, 0),
+                        new Vector3(-5f, 0f, 0),
+                        new Vector3(-2f, 0f, 0),
+                        new Vector3(-2f, 4f, 0),
+                        new Vector3(3f, 4f, 0),
+                        new Vector3(3f, -3f, 0),
+                        new Vector3(6f, -3f, 0),
+                        new Vector3(6f, 2f, 0),
+                        new Vector3(w, 2f, 0)
+                    };
+                case 5:
+                    // 第五关：森林迷宫（最复杂路径）
+                    return new Vector3[]
+                    {
+                        new Vector3(-w, 0f, 0),
+                        new Vector3(-7f, 0f, 0),
+                        new Vector3(-7f, 4f, 0),
+                        new Vector3(-3f, 4f, 0),
+                        new Vector3(-3f, -3f, 0),
+                        new Vector3(1f, -3f, 0),
+                        new Vector3(1f, 3f, 0),
+                        new Vector3(5f, 3f, 0),
+                        new Vector3(5f, -2f, 0),
+                        new Vector3(8f, -2f, 0),
+                        new Vector3(8f, 4f, 0),
+                        new Vector3(w, 4f, 0)
+                    };
                 default:
                     return GetLevelPath(1);
             }
@@ -286,65 +390,115 @@ namespace TowerDefense.Core
         {
             var decoRoot = new GameObject("Decorations");
             decoRoot.transform.SetParent(_mapRoot);
+            var placedPositions = new List<Vector3>();
             var rng = new System.Random(123);
 
             // 根据关卡选择装饰类型
             if (CurrentLevel == 1)
             {
                 // 草原：绿树
-                for (int i = 0; i < 15; i++)
+                for (int i = 0; i < 25; i++)
                 {
                     float x = (float)(rng.NextDouble() - 0.5) * _mapWidth * 0.9f;
                     float y = (float)(rng.NextDouble() - 0.5) * _mapHeight * 0.9f;
-                    if (IsNearPath(new Vector3(x, y, 0), pathPositions, 0.8f)) continue;
+                    var pos = new Vector3(x, y, 0);
+                    if (IsNearPath(pos, pathPositions, 1.2f)) continue;
+                    if (IsOverlapping(pos, placedPositions, 1.6f)) continue;
                     CreateTree(decoRoot.transform, x, y, ref rng);
+                    placedPositions.Add(pos);
                 }
             }
             else if (CurrentLevel == 2)
             {
                 // 沙漠：仙人掌
-                for (int i = 0; i < 12; i++)
+                for (int i = 0; i < 25; i++)
                 {
                     float x = (float)(rng.NextDouble() - 0.5) * _mapWidth * 0.9f;
                     float y = (float)(rng.NextDouble() - 0.5) * _mapHeight * 0.9f;
-                    if (IsNearPath(new Vector3(x, y, 0), pathPositions, 0.8f)) continue;
+                    var pos = new Vector3(x, y, 0);
+                    if (IsNearPath(pos, pathPositions, 1.2f)) continue;
+                    if (IsOverlapping(pos, placedPositions, 1.6f)) continue;
                     CreateCactus(decoRoot.transform, x, y, ref rng);
+                    placedPositions.Add(pos);
                 }
                 // 枯骨
-                for (int i = 0; i < 5; i++)
+                for (int i = 0; i < 15; i++)
                 {
                     float x = (float)(rng.NextDouble() - 0.5) * _mapWidth * 0.9f;
                     float y = (float)(rng.NextDouble() - 0.5) * _mapHeight * 0.9f;
-                    if (IsNearPath(new Vector3(x, y, 0), pathPositions, 0.7f)) continue;
+                    var pos = new Vector3(x, y, 0);
+                    if (IsNearPath(pos, pathPositions, 1.2f)) continue;
+                    if (IsOverlapping(pos, placedPositions, 1.6f)) continue;
                     CreateBones(decoRoot.transform, x, y, ref rng);
+                    placedPositions.Add(pos);
+                }
+            }
+            else if (CurrentLevel == 3)
+            {
+                // 冰雪：冰晶
+                for (int i = 0; i < 25; i++)
+                {
+                    float x = (float)(rng.NextDouble() - 0.5) * _mapWidth * 0.9f;
+                    float y = (float)(rng.NextDouble() - 0.5) * _mapHeight * 0.9f;
+                    var pos = new Vector3(x, y, 0);
+                    if (IsNearPath(pos, pathPositions, 1.2f)) continue;
+                    if (IsOverlapping(pos, placedPositions, 1.6f)) continue;
+                    CreateIceCrystal(decoRoot.transform, x, y, ref rng);
+                    placedPositions.Add(pos);
+                }
+                // 雪人
+                for (int i = 0; i < 15; i++)
+                {
+                    float x = (float)(rng.NextDouble() - 0.5) * _mapWidth * 0.9f;
+                    float y = (float)(rng.NextDouble() - 0.5) * _mapHeight * 0.9f;
+                    var pos = new Vector3(x, y, 0);
+                    if (IsNearPath(pos, pathPositions, 1.2f)) continue;
+                    if (IsOverlapping(pos, placedPositions, 1.6f)) continue;
+                    CreateSnowman(decoRoot.transform, x, y, ref rng);
+                    placedPositions.Add(pos);
+                }
+            }
+            else if (CurrentLevel == 4)
+            {
+                // 火山：熔岩岩石
+                for (int i = 0; i < 30; i++)
+                {
+                    float x = (float)(rng.NextDouble() - 0.5) * _mapWidth * 0.9f;
+                    float y = (float)(rng.NextDouble() - 0.5) * _mapHeight * 0.9f;
+                    var pos = new Vector3(x, y, 0);
+                    if (IsNearPath(pos, pathPositions, 1.2f)) continue;
+                    if (IsOverlapping(pos, placedPositions, 1.6f)) continue;
+                    CreateLavaRock(decoRoot.transform, x, y, ref rng);
+                    placedPositions.Add(pos);
                 }
             }
             else
             {
-                // 冰雪：冰晶
-                for (int i = 0; i < 12; i++)
+                // 森林：大树+蘑菇
+                for (int i = 0; i < 25; i++)
                 {
                     float x = (float)(rng.NextDouble() - 0.5) * _mapWidth * 0.9f;
                     float y = (float)(rng.NextDouble() - 0.5) * _mapHeight * 0.9f;
-                    if (IsNearPath(new Vector3(x, y, 0), pathPositions, 0.8f)) continue;
-                    CreateIceCrystal(decoRoot.transform, x, y, ref rng);
+                    if (IsNearPath(new Vector3(x, y, 0), pathPositions, 1.2f)) continue;
+                    if (IsOverlapping(new Vector3(x, y, 0), placedPositions, 1.6f)) continue;
+                    CreateTree(decoRoot.transform, x, y, ref rng);
+                    placedPositions.Add(new Vector3(x, y, 0));
                 }
-                // 雪人
-                for (int i = 0; i < 5; i++)
+                for (int i = 0; i < 20; i++)
                 {
                     float x = (float)(rng.NextDouble() - 0.5) * _mapWidth * 0.9f;
                     float y = (float)(rng.NextDouble() - 0.5) * _mapHeight * 0.9f;
-                    if (IsNearPath(new Vector3(x, y, 0), pathPositions, 0.7f)) continue;
-                    CreateSnowman(decoRoot.transform, x, y, ref rng);
+                    if (IsNearPath(new Vector3(x, y, 0), pathPositions, 1.2f)) continue;
+                    if (IsOverlapping(new Vector3(x, y, 0), placedPositions, 1.6f)) continue;
+                    CreateMushroom(decoRoot.transform, x, y, ref rng);
+                    placedPositions.Add(new Vector3(x, y, 0));
                 }
             }
-
-            // 岩石（所有关卡都有）
             for (int i = 0; i < 6; i++)
             {
                 float x = (float)(rng.NextDouble() - 0.5) * _mapWidth * 0.9f;
                 float y = (float)(rng.NextDouble() - 0.5) * _mapHeight * 0.9f;
-                if (IsNearPath(new Vector3(x, y, 0), pathPositions, 0.7f)) continue;
+                if (IsNearPath(new Vector3(x, y, 0), pathPositions, 1.6f)) continue;
                 var rock = new GameObject($"Rock_{i}");
                 rock.transform.SetParent(decoRoot.transform);
                 rock.transform.position = new Vector3(x, y, 0);
@@ -352,7 +506,11 @@ namespace TowerDefense.Core
                 float gray = 0.4f + (float)rng.NextDouble() * 0.2f;
                 rockR.sprite = GenerateCircleSprite(24, new Color(gray, gray, gray * 0.9f, 1f));
                 rockR.sortingOrder = 1;
-                rock.transform.localScale = new Vector3(0.3f + (float)rng.NextDouble() * 0.2f, 0.25f + (float)rng.NextDouble() * 0.15f, 1f);
+                rock.transform.localScale = new Vector3(0.5f + (float)rng.NextDouble() * 0.3f, 0.4f + (float)rng.NextDouble() * 0.2f, 1f);
+                var rockObs = rock.AddComponent<Obstacle>();
+                rockObs.Type = Obstacle.ObstacleType.Rock;
+                rockObs.Radius = 0.4f;
+                rockObs.MaxHealth = 70f;
             }
 
             // 天空中漂浮的云朵（在地图上方，不影响游戏）
@@ -388,98 +546,199 @@ namespace TowerDefense.Core
             return false;
         }
 
+
+        /// <summary>检查位置是否与已放置的装饰物重叠。</summary>
+        private static bool IsOverlapping(Vector3 pos, List<Vector3> placed, float minDist)
+        {
+            foreach (var p in placed)
+            {
+                if (Vector3.Distance(pos, p) < minDist) return true;
+            }
+            return false;
+        }
         private void CreateTree(Transform parent, float x, float y, ref System.Random rng)
         {
             var tree = new GameObject("Tree");
             tree.transform.SetParent(parent);
             tree.transform.position = new Vector3(x, y, 0);
+            float treeScale = 1.4f + (float)rng.NextDouble() * 0.6f;
+            tree.transform.localScale = Vector3.one * treeScale;
             var trunk = new GameObject("Trunk");
             trunk.transform.SetParent(tree.transform);
-            trunk.transform.localPosition = new Vector3(0, -0.2f, 0);
+            trunk.transform.localPosition = new Vector3(0, -0.25f, 0);
             var trunkR = trunk.AddComponent<SpriteRenderer>();
             trunkR.sprite = GenerateCircleSprite(16, new Color(0.45f, 0.3f, 0.15f, 1f));
             trunkR.sortingOrder = 1;
-            trunk.transform.localScale = new Vector3(0.15f, 0.3f, 1f);
+            trunk.transform.localScale = new Vector3(0.2f, 0.4f, 1f);
             var leaves = new GameObject("Leaves");
             leaves.transform.SetParent(tree.transform);
-            leaves.transform.localPosition = new Vector3(0, 0.15f, 0);
+            leaves.transform.localPosition = new Vector3(0, 0.2f, 0);
             var leavesR = leaves.AddComponent<SpriteRenderer>();
             float green = 0.35f + (float)rng.NextDouble() * 0.15f;
             leavesR.sprite = GenerateCircleSprite(32, new Color(green, green + 0.2f, green * 0.7f, 1f));
             leavesR.sortingOrder = 2;
-            leaves.transform.localScale = Vector3.one * (0.7f + (float)rng.NextDouble() * 0.4f);
+            leaves.transform.localScale = Vector3.one * (0.9f + (float)rng.NextDouble() * 0.5f);
+            var obs = tree.AddComponent<Obstacle>();
+            obs.Type = Obstacle.ObstacleType.Tree;
+            obs.Radius = 0.4f * treeScale;
+            obs.MaxHealth = 120f * treeScale;
         }
 
         private void CreateCactus(Transform parent, float x, float y, ref System.Random rng)
         {
+            float cactusScale = 2.0f;
             var cactus = new GameObject("Cactus");
             cactus.transform.SetParent(parent);
             cactus.transform.position = new Vector3(x, y, 0);
+            cactus.transform.localScale = Vector3.one * cactusScale;
             // 主体（绿色椭圆）
             var body = new GameObject("Body");
             body.transform.SetParent(cactus.transform);
+            body.transform.localPosition = Vector3.zero;
             var bodyR = body.AddComponent<SpriteRenderer>();
             bodyR.sprite = GenerateCircleSprite(32, new Color(0.3f, 0.55f, 0.25f, 1f));
             bodyR.sortingOrder = 2;
-            body.transform.localScale = new Vector3(0.25f, 0.6f, 1f);
-            // 手臂
-            var arm = new GameObject("Arm");
-            arm.transform.SetParent(cactus.transform);
-            var armR = arm.AddComponent<SpriteRenderer>();
-            armR.sprite = GenerateCircleSprite(16, new Color(0.35f, 0.6f, 0.3f, 1f));
-            armR.sortingOrder = 2;
-            arm.transform.localPosition = new Vector3(0.2f, 0.1f, 0);
-            arm.transform.localScale = new Vector3(0.15f, 0.3f, 1f);
+            body.transform.localScale = new Vector3(0.5f, 1.2f, 1f);
+            // 左手臂
+            var armL = new GameObject("ArmL");
+            armL.transform.SetParent(cactus.transform);
+            armL.transform.localPosition = new Vector3(-0.35f, 0.15f, 0);
+            var armLR = armL.AddComponent<SpriteRenderer>();
+            armLR.sprite = GenerateCircleSprite(16, new Color(0.35f, 0.6f, 0.3f, 1f));
+            armLR.sortingOrder = 2;
+            armL.transform.localScale = new Vector3(0.3f, 0.6f, 1f);
+            // 右手臂
+            var armR = new GameObject("ArmR");
+            armR.transform.SetParent(cactus.transform);
+            armR.transform.localPosition = new Vector3(0.35f, 0.15f, 0);
+            var armRR = armR.AddComponent<SpriteRenderer>();
+            armRR.sprite = GenerateCircleSprite(16, new Color(0.35f, 0.6f, 0.3f, 1f));
+            armRR.sortingOrder = 2;
+            armR.transform.localScale = new Vector3(0.3f, 0.6f, 1f);
+            var obs = cactus.AddComponent<Obstacle>();
+            obs.Type = Obstacle.ObstacleType.Bush;
+            obs.Radius = 0.4f * cactusScale;
+            obs.MaxHealth = 120f * cactusScale;
         }
 
         private void CreateBones(Transform parent, float x, float y, ref System.Random rng)
         {
+            float bonesScale = 2.0f;
             var bones = new GameObject("Bones");
             bones.transform.SetParent(parent);
             bones.transform.position = new Vector3(x, y, 0);
+            bones.transform.localScale = Vector3.one * bonesScale;
             var skull = new GameObject("Skull");
             skull.transform.SetParent(bones.transform);
+            skull.transform.localPosition = Vector3.zero;
             var skullR = skull.AddComponent<SpriteRenderer>();
             skullR.sprite = GenerateCircleSprite(20, new Color(0.95f, 0.92f, 0.8f, 1f));
             skullR.sortingOrder = 2;
-            skull.transform.localScale = Vector3.one * 0.4f;
+            skull.transform.localScale = Vector3.one * 1.0f;
+            var obs = bones.AddComponent<Obstacle>();
+            obs.Type = Obstacle.ObstacleType.Rock;
+            obs.Radius = 0.4f * bonesScale;
+            obs.MaxHealth = 100f * bonesScale;
         }
 
         private void CreateIceCrystal(Transform parent, float x, float y, ref System.Random rng)
         {
+            float crystalScale = 2.0f;
             var crystal = new GameObject("IceCrystal");
             crystal.transform.SetParent(parent);
             crystal.transform.position = new Vector3(x, y, 0);
+            crystal.transform.localScale = Vector3.one * crystalScale;
             var sr = crystal.AddComponent<SpriteRenderer>();
             sr.sprite = GenerateDiamondSprite(32);
             sr.sortingOrder = 2;
-            float s = 0.5f + (float)rng.NextDouble() * 0.3f;
-            crystal.transform.localScale = new Vector3(s * 0.6f, s, 1f);
+            var obs = crystal.AddComponent<Obstacle>();
+            obs.Type = Obstacle.ObstacleType.Rock;
+            obs.Radius = 0.4f * crystalScale;
+            obs.MaxHealth = 110f * crystalScale;
         }
 
         private void CreateSnowman(Transform parent, float x, float y, ref System.Random rng)
         {
+            float snowmanScale = 2.0f;
             var snowman = new GameObject("Snowman");
             snowman.transform.SetParent(parent);
             snowman.transform.position = new Vector3(x, y, 0);
+            snowman.transform.localScale = Vector3.one * snowmanScale;
             // 身体
             var body = new GameObject("Body");
             body.transform.SetParent(snowman.transform);
-            body.transform.localPosition = new Vector3(0, -0.15f, 0);
+            body.transform.localPosition = new Vector3(0, -0.12f, 0);
             var bodyR = body.AddComponent<SpriteRenderer>();
             bodyR.sprite = GenerateCircleSprite(32, new Color(0.95f, 0.97f, 1f, 1f));
             bodyR.sortingOrder = 2;
-            body.transform.localScale = Vector3.one * 0.5f;
+            body.transform.localScale = Vector3.one * 0.6f;
             // 头
             var head = new GameObject("Head");
             head.transform.SetParent(snowman.transform);
-            head.transform.localPosition = new Vector3(0, 0.25f, 0);
+            head.transform.localPosition = new Vector3(0, 0.22f, 0);
             var headR = head.AddComponent<SpriteRenderer>();
             headR.sprite = GenerateCircleSprite(24, new Color(0.95f, 0.97f, 1f, 1f));
             headR.sortingOrder = 2;
-            head.transform.localScale = Vector3.one * 0.35f;
+            head.transform.localScale = Vector3.one * 0.4f;
+            var obs = snowman.AddComponent<Obstacle>();
+            obs.Type = Obstacle.ObstacleType.Bush;
+            obs.Radius = 0.4f * snowmanScale;
+            obs.MaxHealth = 130f * snowmanScale;
         }
 
+        private void CreateLavaRock(Transform parent, float x, float y, ref System.Random rng)
+        {
+            float rockScale = 2.0f;
+            var rock = new GameObject("LavaRock");
+            rock.transform.SetParent(parent);
+            rock.transform.position = new Vector3(x, y, 0);
+            rock.transform.localScale = Vector3.one * rockScale;
+            var body = new GameObject("Body");
+            body.transform.SetParent(rock.transform);
+            body.transform.localPosition = Vector3.zero;
+            var bodyR = body.AddComponent<SpriteRenderer>();
+            bodyR.sprite = GenerateCircleSprite(32, new Color(0.35f, 0.2f, 0.15f, 1f));
+            bodyR.sortingOrder = 2;
+            body.transform.localScale = new Vector3(1.35f, 1.125f, 1f);
+            var glow = new GameObject("Glow");
+            glow.transform.SetParent(rock.transform);
+            glow.transform.localPosition = Vector3.zero;
+            var glowR = glow.AddComponent<SpriteRenderer>();
+            glowR.sprite = GenerateCircleSprite(16, new Color(1f, 0.4f, 0.1f, 0.8f));
+            glowR.sortingOrder = 3;
+            glow.transform.localScale = Vector3.one * 0.7f;
+            var obs = rock.AddComponent<Obstacle>();
+            obs.Type = Obstacle.ObstacleType.Rock;
+            obs.Radius = 0.4f * rockScale;
+            obs.MaxHealth = 130f * rockScale;
+        }
+
+        private void CreateMushroom(Transform parent, float x, float y, ref System.Random rng)
+        {
+            float mushScale = 2.0f;
+            var mush = new GameObject("Mushroom");
+            mush.transform.SetParent(parent);
+            mush.transform.position = new Vector3(x, y, 0);
+            mush.transform.localScale = Vector3.one * mushScale;
+            var stem = new GameObject("Stem");
+            stem.transform.SetParent(mush.transform);
+            stem.transform.localPosition = new Vector3(0, -0.12f, 0);
+            var stemR = stem.AddComponent<SpriteRenderer>();
+            stemR.sprite = GenerateCircleSprite(16, new Color(0.9f, 0.85f, 0.7f, 1f));
+            stemR.sortingOrder = 2;
+            stem.transform.localScale = new Vector3(0.25f, 0.45f, 1f);
+            var cap = new GameObject("Cap");
+            cap.transform.SetParent(mush.transform);
+            cap.transform.localPosition = new Vector3(0, 0.12f, 0);
+            var capR = cap.AddComponent<SpriteRenderer>();
+            capR.sprite = GenerateCircleSprite(32, new Color(0.8f, 0.2f, 0.2f, 1f));
+            capR.sortingOrder = 3;
+            cap.transform.localScale = new Vector3(0.65f, 0.45f, 1f);
+            var obs = mush.AddComponent<Obstacle>();
+            obs.Type = Obstacle.ObstacleType.Bush;
+            obs.Radius = 0.4f * mushScale;
+            obs.MaxHealth = 80f * mushScale;
+        }
         private Sprite GenerateDiamondSprite(int size)
         {
             Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
@@ -910,6 +1169,7 @@ namespace TowerDefense.Core
             archerTower.name = "TowerData_Archer";
             archerTower.Type = TowerType.Archer;
             archerTower.DisplayName = "箭塔";
+            archerTower.Description = "攻速快的单体物理攻击塔，造价低廉，是早期过渡的核心。\n唯一能有效攻击隐身敌人的塔之一。";
             archerTower.BuildCost = 50;
             archerTower.Range = 3.5f;
             archerTower.Damage = 10f;
@@ -932,6 +1192,7 @@ namespace TowerDefense.Core
             cannonTower.name = "TowerData_Cannon";
             cannonTower.Type = TowerType.Cannon;
             cannonTower.DisplayName = "炮塔";
+            cannonTower.Description = "发射炮弹造成范围溅射伤害，攻速慢但威力大。\n适合对付成群敌人，但打不到飞行目标。";
             cannonTower.BuildCost = 100;
             cannonTower.Range = 3.2f;
             cannonTower.Damage = 45f;
@@ -956,6 +1217,7 @@ namespace TowerDefense.Core
             frostTower.name = "TowerData_Frost";
             frostTower.Type = TowerType.Frost;
             frostTower.DisplayName = "冰塔";
+            frostTower.Description = "伤害很低，但能减速敌人40%持续2秒。\n配合其他输出塔使用，效果远超它本身的伤害。";
             frostTower.BuildCost = 75;
             frostTower.Range = 3.5f;
             frostTower.Damage = 8f;
@@ -981,6 +1243,7 @@ namespace TowerDefense.Core
             laserTower.name = "TowerData_Laser";
             laserTower.Type = TowerType.Laser;
             laserTower.DisplayName = "激光塔";
+            laserTower.Description = "持续光束攻击，DPS极高，自动锁定目标。\n造价昂贵但输出最强，同样能攻击隐身敌人。";
             laserTower.BuildCost = 150;
             laserTower.Range = 4.5f;
             laserTower.Damage = 35f;
@@ -998,6 +1261,12 @@ namespace TowerDefense.Core
                 new TowerUpgradeData { Cost = 300, DamageMultiplier = 1.8f, RangeBonus = 0.5f, AttackSpeedBonus = 0.2f }
             };
             _towerDatas.Add(laserTower);
+
+            // 新塔：毒塔、辅助塔
+            NewGameDataConfig.AddNewTowers(_towerDatas);
+
+            // 新敌人：隐身、飞行
+            NewGameDataConfig.AddNewEnemies(_enemyDatas);
         }
 
         /// <summary>
@@ -1068,12 +1337,59 @@ namespace TowerDefense.Core
         /// </summary>
         private void RegisterEnemyTypes()
         {
+            // 按关卡设置敌人主题色
+            Color normalCol, fastCol, tankCol, bossCol, eliteCol;
+            switch (CurrentLevel)
+            {
+                case 2: // 沙漠：土黄棕红系
+                    normalCol = new Color(0.85f, 0.65f, 0.35f);
+                    fastCol = new Color(1f, 0.55f, 0.2f);
+                    tankCol = new Color(0.6f, 0.4f, 0.25f);
+                    bossCol = new Color(0.8f, 0.25f, 0.15f);
+                    eliteCol = new Color(0.9f, 0.45f, 0.1f);
+                    break;
+                case 3: // 冰雪：冰蓝白色系
+                    normalCol = new Color(0.65f, 0.85f, 1f);
+                    fastCol = new Color(0.9f, 0.95f, 1f);
+                    tankCol = new Color(0.4f, 0.65f, 0.9f);
+                    bossCol = new Color(0.25f, 0.4f, 0.8f);
+                    eliteCol = new Color(0.5f, 0.75f, 1f);
+                    break;
+                case 4: // 火山：红橙黑色系
+                    normalCol = new Color(0.9f, 0.25f, 0.15f);
+                    fastCol = new Color(1f, 0.5f, 0.1f);
+                    tankCol = new Color(0.5f, 0.15f, 0.1f);
+                    bossCol = new Color(0.3f, 0.1f, 0.08f);
+                    eliteCol = new Color(1f, 0.35f, 0.05f);
+                    break;
+                case 5: // 森林：深绿紫色系
+                    normalCol = new Color(0.2f, 0.55f, 0.25f);
+                    fastCol = new Color(0.6f, 0.35f, 0.8f);
+                    tankCol = new Color(0.15f, 0.4f, 0.2f);
+                    bossCol = new Color(0.4f, 0.15f, 0.5f);
+                    eliteCol = new Color(0.3f, 0.7f, 0.4f);
+                    break;
+                default: // 第1关草原：保持原色
+                    normalCol = new Color(0.9f, 0.35f, 0.35f);
+                    fastCol = new Color(1f, 0.78f, 0.25f);
+                    tankCol = new Color(0.5f, 0.55f, 0.65f);
+                    bossCol = new Color(0.7f, 0.2f, 0.8f);
+                    eliteCol = new Color(0.6f, 0.2f, 0.9f);
+                    break;
+            }
             foreach (var data in _enemyDatas)
             {
+                switch (data.Type)
+                {
+                    case EnemyType.Normal: data.BodyColor = normalCol; break;
+                    case EnemyType.Fast: data.BodyColor = fastCol; break;
+                    case EnemyType.Tank: data.BodyColor = tankCol; break;
+                    case EnemyType.Boss: data.BodyColor = bossCol; break;
+                    case EnemyType.Elite: data.BodyColor = eliteCol; break;
+                }
                 EnemySpawner.Instance.RegisterEnemyType(data);
             }
         }
-
         /// <summary>
         /// 设置波次配置（10波，难度递增）。
         /// </summary>
@@ -1125,7 +1441,7 @@ namespace TowerDefense.Core
             waves.Add(CreateWave(20, new[] { (bossData, 5, 6f, 0f), (eliteData, 15, 1.2f, 3f), (tankData, 15, 0.8f, 5f), (fastData, 30, 0.3f, 8f) }));
 
             // 根据关卡截取波数
-            int maxWaves = CurrentLevel == 1 ? 10 : CurrentLevel == 2 ? 15 : 20;
+            int maxWaves = CurrentLevel == 1 ? 10 : CurrentLevel == 2 ? 15 : CurrentLevel == 3 ? 20 : CurrentLevel == 4 ? 22 : 25;
             var selectedWaves = waves.GetRange(0, Mathf.Min(maxWaves, waves.Count));
 
             GameManager.Instance.WaveSystem.SetWaves(selectedWaves);
@@ -1157,7 +1473,8 @@ namespace TowerDefense.Core
         /// </summary>
         public void ResetGame()
         {
-            // 清理敌人
+            // 清理障碍物选中状态和血条
+            if (Obstacle.Selected != null) Obstacle.Selected.Deselect();
             EnemySpawner.Instance.ClearAllEnemies();
 
             // 清理塔和投射物
@@ -1182,6 +1499,8 @@ namespace TowerDefense.Core
 
             // 重置GameManager状态
             GameManager.Instance.ChangeState(GameState.Preparation);
+            // 自动开始第一波倒计时
+            GameManager.Instance.WaveSystem.StartFirstWaveCountdown();
 
             // 重新推送初始UI数据
             EventBus.Publish(new GoldChangedEvent { CurrentGold = GameManager.Instance.CurrentGold, Delta = 0 });
@@ -1190,6 +1509,7 @@ namespace TowerDefense.Core
             if (UIManager.Instance != null && UIManager.Instance.HUD != null)
             {
                 UIManager.Instance.HUD.RefreshWaveDisplay(0, GameManager.Instance.TotalWaves);
+                UIManager.Instance.HUD.ResetSpeed();
             }
         }
 
@@ -1258,7 +1578,7 @@ namespace TowerDefense.Core
                 flowerPurple = new Color(0.8f, 0.6f, 0.3f);
                 bush = new Color(0.5f, 0.4f, 0.2f);
             }
-            else
+            else if (CurrentLevel == 3)
             {
                 // 冰雪
                 grassA = new Color(0.65f, 0.8f, 0.95f);
@@ -1271,6 +1591,34 @@ namespace TowerDefense.Core
                 flowerWhite = Color.white;
                 flowerPurple = new Color(0.7f, 0.85f, 1f);
                 bush = new Color(0.4f, 0.6f, 0.75f);
+            }
+            else if (CurrentLevel == 4)
+            {
+                // 火山
+                grassA = new Color(0.45f, 0.25f, 0.2f);
+                grassB = new Color(0.38f, 0.2f, 0.16f);
+                grassC = new Color(0.5f, 0.3f, 0.22f);
+                grassDark = new Color(0.3f, 0.15f, 0.12f);
+                grassLight = new Color(0.55f, 0.35f, 0.25f);
+                flowerYellow = new Color(1f, 0.5f, 0.15f);
+                flowerPink = new Color(1f, 0.3f, 0.2f);
+                flowerWhite = new Color(1f, 0.8f, 0.6f);
+                flowerPurple = new Color(0.8f, 0.3f, 0.4f);
+                bush = new Color(0.35f, 0.18f, 0.14f);
+            }
+            else
+            {
+                // 森林
+                grassA = new Color(0.25f, 0.5f, 0.22f);
+                grassB = new Color(0.2f, 0.42f, 0.18f);
+                grassC = new Color(0.3f, 0.55f, 0.26f);
+                grassDark = new Color(0.15f, 0.35f, 0.14f);
+                grassLight = new Color(0.38f, 0.62f, 0.32f);
+                flowerYellow = new Color(1f, 0.9f, 0.3f);
+                flowerPink = new Color(1f, 0.5f, 0.6f);
+                flowerWhite = new Color(0.9f, 0.95f, 0.85f);
+                flowerPurple = new Color(0.6f, 0.4f, 0.8f);
+                bush = new Color(0.18f, 0.4f, 0.15f);
             }
 
             var rng = new System.Random(42);
@@ -1373,3 +1721,27 @@ namespace TowerDefense.Core
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
